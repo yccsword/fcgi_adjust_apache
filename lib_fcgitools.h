@@ -11,11 +11,14 @@
 #include <malloc.h>
 
 #define MACRO_STR(x) {x, #x}  
-	 
+
+#ifndef _MACRO_STR_T
+#define _MACRO_STR_T
 typedef struct _macro_str {	
    int id;	
    char *name;	
 }MACRO_STR_T;  
+#endif
  
 typedef enum _http_code{  
 	/*********************************** HTTP Codes *******************************/
@@ -70,11 +73,12 @@ typedef enum _http_code{
 	HTTP_CODE_END
 }HTTP_CODE;	
  
-char * get_macro_name(MACRO_STR_T* table, int id);
+char * lib_fcgitools_get_macro_name(MACRO_STR_T* table, int id);
 
 #define MAX_QUERY_COUNT 32
 #define MAX_SESSION_LEN 384 /*128 * 3*/
 #define MAX_ENCODE_LEN 129 /*(MAX_SESSION_LEN / 3) + 1*/
+#define MAXL_BASE64CODE    1024
 #define UPLOAD_FILE_PREFIX "/tmp/"
 #define UPLOAD_FILE_PREFIX_LEN 6 /*strlen(UPLOAD_FILE_PREFIX) + 1*/
 #define MAX_UPLOADFILE_COUNT 8
@@ -102,6 +106,7 @@ typedef struct Webs{
 	char			*method;			/**< HTTP request method */
 	int        		files;              /**< Uploaded files */
 	char			*content_type;
+	char			*query_string;
 	int				content_length;
 	char			*content;
 	char			ipaddr[64];			/**< Connecting ipaddress */
@@ -126,6 +131,8 @@ char * GetQueryString(void);
 void FreeQueryString(char * querystring);
 char * urldecode(char *p);
 char * urlencode(char const *s);
+char * base64_encode(const char* str);
+char * base64_decode(const char* str);
 int findstr(char* src, char* s);
 Webs * FCGI_InitWp(void);
 void FCGI_FreeWp(Webs * wp);

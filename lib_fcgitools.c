@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "lib_fcgitools.h"
 #include <stdarg.h>
+#include <errno.h>  
 
 Query gQuery[MAX_QUERY_COUNT] = {{0}};
 int QueryCount = 0;
@@ -365,6 +366,7 @@ Webs * FCGI_InitWp(void)
 	http_env[SERVER_ADDR] = getenv("SERVER_ADDR");
 	
 	wp.method = http_env[REQUEST_METHOD];
+	wp.query_string = strdup(http_env[QUERY_STRING]);
 	memcpy(wp.ipaddr, http_env[REMOTE_ADDR], sizeof(wp.ipaddr));
 	memcpy(wp.ifaddr, http_env[SERVER_ADDR], sizeof(wp.ifaddr));
 
@@ -461,6 +463,11 @@ void FCGI_FreeWp(Webs * fwp)
 				post_form_data_len = 0;
 			}
 		}
+		if (fwp->query_string != NULL)
+		{
+			free(fwp->query_string);
+			fwp->query_string = NULL;
+		}
 		memset(fwp, 0, sizeof(Webs));
 	}
 	else if (wp.method != NULL)
@@ -483,6 +490,11 @@ void FCGI_FreeWp(Webs * fwp)
 				post_form_data = NULL;
 				post_form_data_len = 0;
 			}
+		}
+		if (wp.query_string != NULL)
+		{
+			free(wp.query_string);
+			wp.query_string = NULL;
 		}
 		memset(&wp, 0, sizeof(Webs));
 	}
@@ -545,7 +557,7 @@ MACRO_STR_T g_http_code_str[] ={
 	{-1, NULL}  
 };
 
-char * get_macro_name(MACRO_STR_T* table, int id)  
+char * lib_fcgitools_get_macro_name(MACRO_STR_T* table, int id)  
 {  
    int i = 0;  
  
@@ -581,7 +593,7 @@ void _FCGI_PrintWeb(int Status,char * Content_type,char * RedirectUrlorMessage, 
 		default:
 			printf("Status: %d %s\r\n"
 		            "Connection: close\r\n"
-		            "Content-type: text/html; charset=UTF-8\r\n\r\n", Status, get_macro_name(g_http_code_str, Status));
+		            "Content-type: text/html; charset=UTF-8\r\n\r\n", Status, lib_fcgitools_get_macro_name(g_http_code_str, Status));
 			printf("<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n"
 				    "<html><head>\n"
 				    "<title>Set Status %d Internal Server Error</title>\n"
@@ -732,6 +744,74 @@ char * urldecode(char *p)
 	*p='\0';
 	return url;
 }  
+
+char base64_result[MAXL_BASE64CODE] = {0};
+char * base64_encode(const char* str)
+{  
+    int     n=0;  
+    FILE*   fp=NULL;    
+    char    buf[256];  
+	if (str == NULL || strlen(str) == 0)
+	{
+		return "";
+	}
+
+	memset(base64_result, 0, MAXL_BASE64CODE);
+    sprintf(buf, "echo -n \"%s\" | base64 -w 0", str);  
+      
+    if(NULL == (fp=popen(buf,"r")))    
+    {   
+        fprintf(stderr, "execute command failed: %s", strerror(errno));    
+        return "\0";    
+    }   
+    if(NULL == fgets(base64_result, MAXL_BASE64CODE, fp))   
+    {  
+        pclose(fp);  
+        return "\0";  
+    }  
+      
+    n = strlen(base64_result);  
+    if('\n' == base64_result[n-1])  
+        base64_result[n-1] = 0;   // 去掉base64命令输出的换行符  
+          
+    pclose(fp);  
+      
+    return base64_result;   
+}  
+  
+char * base64_decode(const char* str)
+{  
+    int     n=0;  
+    FILE*   fp=NULL;    
+    char    buf[256];  
+	if (str == NULL || strlen(str) == 0)
+	{
+		return "";
+	}
+
+	memset(base64_result, 0, MAXL_BASE64CODE);
+    sprintf(buf, "echo %s | base64 -d", str);  
+      
+    if(NULL == (fp=popen(buf, "r")))    
+    {   
+        fprintf(stderr, "execute command failed: %s", strerror(errno));    
+        return "\0";    
+    }   
+    if(NULL == fgets(base64_result, MAXL_BASE64CODE, fp))   
+    {  
+        pclose(fp);  
+        return "\0";  
+    }  
+      
+    n = strlen(base64_result);  
+    if('\n' == base64_result[n-1])  
+        base64_result[n-1] = 0;   // 去掉base64命令输出的换行符  
+          
+    pclose(fp);  
+      
+    return base64_result;   
+}  
+
 
 int findstr(char* src, char* s)
 {
