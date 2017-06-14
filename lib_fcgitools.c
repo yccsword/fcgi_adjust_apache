@@ -58,6 +58,7 @@ void trim(char* s, char c)
     *t = 0;
 }
 
+#define MAX_TEMP_QUERY 6
 void _ParseQuery(char * query_string, int NeedClean)
 { 
 	if (NeedClean == CLEAN_QUERY)
@@ -66,7 +67,8 @@ void _ParseQuery(char * query_string, int NeedClean)
 		memset(gQuery, 0, sizeof(gQuery));
 	}
 	int i = 0;
-	char * tempquery[2] = {0};
+	int j = 0;
+	char * tempquery[MAX_TEMP_QUERY] = {0};
 	int valuecount = 0;
 	int curQueryCount = 0;
 	int lastQueryCount = QueryCount;
@@ -79,11 +81,22 @@ void _ParseQuery(char * query_string, int NeedClean)
 		curQueryCount = MAX_QUERY_COUNT - lastQueryCount;
 	}
 	QueryCount = lastQueryCount + curQueryCount;
+	//FCGI_ErrLog("curQueryCount:%d\n",curQueryCount);
 	for (i = 0; i < curQueryCount ; i++)
 	{
 		split(QueryChar[i], "=", tempquery, &valuecount);
 		gQuery[lastQueryCount + i].QueryName = tempquery[0];
 		gQuery[lastQueryCount + i].QueryValue = tempquery[1];	
+		for (j = 2; j < valuecount; j++)
+		{
+			if (j > MAX_TEMP_QUERY)
+			{
+				FCGI_ErrLog("valuecount:%d large than MAX_TEMP_QUERY:%d may cast Cross the border error\n", valuecount, MAX_TEMP_QUERY);
+				break;
+			}
+			memset(tempquery[j] - 1, '=', 1);
+		}
+		//FCGI_ErrLog("index:%d QueryName:%s QueryValue:%s\n",i ,tempquery[0], tempquery[1]);
 	}
 }
 
@@ -364,11 +377,16 @@ Webs * FCGI_InitWp(void)
 	http_env[HTTP_SESSION] = getenv("HTTP_SESSION");
 	http_env[REMOTE_ADDR] = getenv("REMOTE_ADDR");
 	http_env[SERVER_ADDR] = getenv("SERVER_ADDR");
+	http_env[SERVER_PORT] = getenv("SERVER_PORT");
 	
 	wp.method = http_env[REQUEST_METHOD];
 	wp.query_string = strdup(http_env[QUERY_STRING]);
 	memcpy(wp.ipaddr, http_env[REMOTE_ADDR], sizeof(wp.ipaddr));
 	memcpy(wp.ifaddr, http_env[SERVER_ADDR], sizeof(wp.ifaddr));
+	if (http_env[SERVER_PORT] != NULL && strlen(http_env[SERVER_PORT]) != 0)
+	{
+		wp.server_port = atoi(http_env[SERVER_PORT]);
+	}
 
 	if ((http_env[QUERY_STRING] != NULL) && (strlen(http_env[QUERY_STRING]) != 0))
 	{

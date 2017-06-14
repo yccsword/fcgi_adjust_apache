@@ -93,6 +93,7 @@ typedef enum http_env_list
 	CONTENT_TYPE,
 	REMOTE_ADDR,
 	SERVER_ADDR,
+	SERVER_PORT,
 	HTTP_ENV_END
 }
 HTTP_ENV_LIST;
@@ -111,6 +112,7 @@ typedef struct Webs{
 	char			*content;
 	char			ipaddr[64];			/**< Connecting ipaddress */
 	char            ifaddr[64];  		/**< Local interface ipaddress */
+	int 			server_port;
 	int reserver;
 } Webs;
 
