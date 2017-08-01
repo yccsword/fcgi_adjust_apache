@@ -9,6 +9,7 @@
 #include "multipart_parser.h"
 #include "pthread.h"
 #include <malloc.h>
+#include "md5.h"
 
 #define MACRO_STR(x) {x, #x}  
 
@@ -94,6 +95,7 @@ typedef enum http_env_list
 	REMOTE_ADDR,
 	SERVER_ADDR,
 	SERVER_PORT,
+	HTTP_HOST,
 	HTTP_ENV_END
 }
 HTTP_ENV_LIST;
@@ -107,12 +109,13 @@ typedef struct Webs{
 	char			*method;			/**< HTTP request method */
 	int        		files;              /**< Uploaded files */
 	char			*content_type;
-	char			*query_string;
+	char			*query;
 	int				content_length;
 	char			*content;
 	char			ipaddr[64];			/**< Connecting ipaddress */
 	char            ifaddr[64];  		/**< Local interface ipaddress */
-	int 			server_port;
+	int 			port;
+	char            host[64];  			/**< Requested host */
 	int reserver;
 } Webs;
 
@@ -136,6 +139,9 @@ char * urlencode(char const *s);
 char * base64_encode(const char* str);
 char * base64_decode(const char* str);
 int findstr(char* src, char* s);
+void strToUpper(char * str);
+void StrToHex(unsigned char *pbDest, unsigned char *pbSrc, int nLen);
+void HexToStr(unsigned char *pbDest, unsigned char *pbSrc, int nLen);
 Webs * FCGI_InitWp(void);
 void FCGI_FreeWp(Webs * wp);
 char * FCGI_GetPostFormData_clientFileName(int fileindex);

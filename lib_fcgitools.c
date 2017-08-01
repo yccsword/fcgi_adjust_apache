@@ -5,6 +5,7 @@
 #include "lib_fcgitools.h"
 #include <stdarg.h>
 #include <errno.h>  
+#include "iconv.h"
 
 Query gQuery[MAX_QUERY_COUNT] = {{0}};
 int QueryCount = 0;
@@ -378,14 +379,17 @@ Webs * FCGI_InitWp(void)
 	http_env[REMOTE_ADDR] = getenv("REMOTE_ADDR");
 	http_env[SERVER_ADDR] = getenv("SERVER_ADDR");
 	http_env[SERVER_PORT] = getenv("SERVER_PORT");
+	http_env[HTTP_HOST] = getenv("HTTP_HOST");
 	
 	wp.method = http_env[REQUEST_METHOD];
-	wp.query_string = strdup(http_env[QUERY_STRING]);
+	wp.query = strdup(http_env[QUERY_STRING]);
 	memcpy(wp.ipaddr, http_env[REMOTE_ADDR], sizeof(wp.ipaddr));
 	memcpy(wp.ifaddr, http_env[SERVER_ADDR], sizeof(wp.ifaddr));
+	memcpy(wp.host, http_env[HTTP_HOST], sizeof(wp.host));
+	
 	if (http_env[SERVER_PORT] != NULL && strlen(http_env[SERVER_PORT]) != 0)
 	{
-		wp.server_port = atoi(http_env[SERVER_PORT]);
+		wp.port = atoi(http_env[SERVER_PORT]);
 	}
 
 	if ((http_env[QUERY_STRING] != NULL) && (strlen(http_env[QUERY_STRING]) != 0))
@@ -481,10 +485,10 @@ void FCGI_FreeWp(Webs * fwp)
 				post_form_data_len = 0;
 			}
 		}
-		if (fwp->query_string != NULL)
+		if (fwp->query != NULL)
 		{
-			free(fwp->query_string);
-			fwp->query_string = NULL;
+			free(fwp->query);
+			fwp->query = NULL;
 		}
 		memset(fwp, 0, sizeof(Webs));
 	}
@@ -509,10 +513,10 @@ void FCGI_FreeWp(Webs * fwp)
 				post_form_data_len = 0;
 			}
 		}
-		if (wp.query_string != NULL)
+		if (wp.query != NULL)
 		{
-			free(wp.query_string);
-			wp.query_string = NULL;
+			free(wp.query);
+			wp.query = NULL;
 		}
 		memset(&wp, 0, sizeof(Webs));
 	}
@@ -633,6 +637,8 @@ void _FCGI_PrintWeb(int Status,char * Content_type,char * RedirectUrlorMessage, 
 	}
 }
 
+
+
 void FCGI_SetSession(char * Key,char * Value)
 {
 	if(Key != NULL && strlen(Key) != 0)
@@ -708,37 +714,82 @@ inline int FCGI_websWrite(char* Message, char* format, ...)
 
 }
 
-char encode_result[MAX_ENCODE_LEN] = {0};
-char * urlencode(char const *s)
-{
-    char const *from, *end;
-	char c;
-	char * to = NULL;
-    from = s;
-    end = s + strlen(s);
-    to = encode_result;
-	memset(encode_result, 0, sizeof(encode_result));
-    unsigned char hexchars[] = "0123456789ABCDEF";
-    while (from < end) {
-        c = *from++;
+char * convert_result = NULL;
+//编码转换，source_charset是源编码，to_charset是目标编码  
+char* code_convert(char *source_charset, char *to_charset, char* sourceStr) //sourceStr是源编码字符串  
+{  
+	if (convert_result != NULL)
+	{
+		free(convert_result);
+		convert_result = NULL;
+	}
+    iconv_t cd = iconv_open(to_charset, source_charset);//获取转换句柄，void*类型  
+    if (cd == 0)  
+        return "a";  
+  
+    size_t inlen = strlen(sourceStr);  
+    size_t outlen = 255;  
+    char* inbuf = (char*)sourceStr;  
+    char *outbuf = alloca(outlen);
+    memset(outbuf, 0, outlen);
+    if (iconv(cd, &inbuf, &inlen, &outbuf,&outlen) == -1)  
+        return "b";  
+  
+    convert_result = strdup(outbuf);//此时的convert_result为转换编码之后的字符串  
+    iconv_close(cd);  
+    return convert_result;  
+} 
 
-        if (c == ' ') {
-            *to++ = '+';
-        } else if ((c < '0' && c != '-' && c != '.')
-                   ||(c < 'A' && c > '9')
-                   ||(c > 'Z' && c < 'a' && c != '_')
-                   ||(c > 'z')) {
-            to[0] = '%';
-            to[1] = hexchars[c >> 4];
-            to[2] = hexchars[c & 15];
-            to += 3;
-        } else {
-            *to++ = c;
-        }
-    }
-    *to = '\0';
-    return (char *) encode_result;
+inline static unsigned char char_to_hex( unsigned char x )
+{
+	return (unsigned char)(x > 9 ? x + 55: x + 48);
 }
+
+inline static int is_alpha_number_char( unsigned char c )
+{
+	if ( (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') )
+	  return 1;
+	return 0;
+}
+
+//url编码实现
+
+char encode_result[MAX_ENCODE_LEN] = {0};
+char * urlencode(char const * src)
+{
+	if (src == NULL || strlen(src) == 0)
+	{
+		return "";
+	}
+	char * dest = encode_result;
+	int  dest_len = MAX_ENCODE_LEN;
+	unsigned char ch;
+	int  len = 0;
+
+	while (len < (dest_len - 4) && *src)
+	{
+		ch = (unsigned char)*src;
+		if (*src == ' ')
+		{
+			*dest++ = '+';
+		}
+		else if (is_alpha_number_char(ch) || strchr("-_.!~*'()", ch))
+		{
+			*dest++ = *src;
+		}
+		else
+		{
+			*dest++ = '%';
+			*dest++ = char_to_hex( (unsigned char)(ch >> 4) );
+			*dest++ = char_to_hex( (unsigned char)(ch % 16) );
+		} 
+		++src;
+		++len;
+	}
+	*dest = 0;
+	return encode_result;
+} 
+
 
 char * urldecode(char *p)
 {
@@ -852,6 +903,79 @@ int findstr(char* src, char* s)
     }
     return n;
 }
+
+void strToUpper(char * str)
+{
+	int i = 0;
+	if (str == NULL)
+	{
+		return;
+	}
+	for (i = 0; i < strlen(str); i++)
+	{
+		str[i] = toupper(str[i]);
+	}
+	return;
+}
+
+/*
+// C prototype : void StrToHex(BYTE *pbDest, BYTE *pbSrc, int nLen)
+// parameter(s): [OUT] pbDest - 输出缓冲区
+// [IN] pbSrc - 字符串
+// [IN] nLen - 16进制数的字节数(字符串的长度/2)
+// return value:
+// remarks : 将字符串转化为16进制数
+*/
+void StrToHex(unsigned char *pbDest, unsigned char *pbSrc, int nLen)
+{
+	char h1,h2;
+	unsigned char s1,s2;
+	int i;
+
+	for (i=0; i<nLen; i++)
+	{
+		h1 = pbSrc[2*i];
+		h2 = pbSrc[2*i+1];
+
+		s1 = toupper(h1) - 0x30;
+		if (s1 > 9)
+		s1 -= 7;
+
+		s2 = toupper(h2) - 0x30;
+		if (s2 > 9)
+		s2 -= 7;
+
+		pbDest[i] = s1*16 + s2;
+	}
+}
+
+/*
+// C prototype : void HexToStr(BYTE *pbDest, BYTE *pbSrc, int nLen)
+// parameter(s): [OUT] pbDest - 存放目标字符串
+// [IN] pbSrc - 输入16进制数的起始地址
+// [IN] nLen - 16进制数的字节数
+// return value:
+// remarks : 将16进制数转化为字符串
+*/
+void HexToStr(unsigned char *pbDest, unsigned char *pbSrc, int nLen)
+{
+	char ddl,ddh;
+	int i;
+
+	for (i=0; i<nLen; i++)
+	{
+		ddh = 48 + pbSrc[i] / 16;
+		ddl = 48 + pbSrc[i] % 16;
+		if (ddh > 57) ddh = ddh + 7;
+		if (ddl > 57) ddl = ddl + 7;
+		pbDest[i*2] = ddh;
+		pbDest[i*2+1] = ddl;
+	}
+
+	pbDest[nLen*2] = '\0';
+}
+
+
 
 char * FCGI_GetPostFormData_clientFileName(int fileindex)
 {
